@@ -2,21 +2,20 @@
 #include <stdio.h>
 #include <math.h>
 #include <stdbool.h>
+#include <time.h>
 #include "SDL.h"
 
-//Internal
-#include "structs.h"
 
-//Definiions
-#define FPS 60
-#define FRAME_TARGET_TIME (1000/FPS)
-#define RESOLUTION 600
-#define WIDTH 50
+//Internal
+#include "structs_and_definitions.h"
+#include "sand_logic.h"
+
 
 typedef struct mouse{
     int x;
     int y;
 } mouse;
+
 
 // Global variables
 
@@ -26,11 +25,22 @@ mouse current_mouse;
 int game_is_running = 0;
 int direction=1;
 int left_button_down;
+char current_particle=1;
 
 float func_result;
 
-bool sim[WIDTH][WIDTH];
-bool aux_sim[WIDTH][WIDTH];
+// 0 is air, 1 is regular sand. The rest are special behaviours
+// Fuck it, we ball.
+char sim[WIDTH][WIDTH];
+char aux_sim[WIDTH][WIDTH];
+
+//colors
+char colors[256][3] = {
+    {0, 0, 0},
+    {128,128,128}, //Basic Sand
+    {10,128,40}, // Inert gas
+    {0, 0, 128} // Water
+};
 
 float grid_size = RESOLUTION/WIDTH;
 
@@ -45,10 +55,11 @@ float delta_time = 0; //Difference between last frame and current frame
 // FPS limit
 
 void setup(){
+    srand(time(NULL));
     for(int i =0; i<WIDTH; i++){
-    for(int j =0 ; j<WIDTH; j++){
-        sim[i][j]=false;
-        aux_sim[i][j]=false;
+    for(int j =0 ; j<=WIDTH; j++){
+        sim[i][j]=0;
+        aux_sim[i][j]=0;
     }
     }
 }
@@ -65,15 +76,34 @@ void process_input() {
                 if (event.key.keysym.sym == SDLK_ESCAPE) {
                     game_is_running = 0;
                 }
+                if (event.key.keysym.sym == SDLK_0) {
+                    current_particle = 0;
+                }
+                if (event.key.keysym.sym == SDLK_1) {
+                    current_particle = 1;
+                }
+                if (event.key.keysym.sym == SDLK_2) {
+                    current_particle = 2;
+                }
+                if (event.key.keysym.sym == SDLK_3) {
+                    current_particle = 3;
+                }
+                if (event.key.keysym.sym == SDLK_r) {
+                    for(int i=0; i<WIDTH - 1; i++){
+                    for(int j=0; j<WIDTH - 1; j++){
+                        sim[i][j]=0;
+                    }
+                    }
+                }
                 break;
             case SDL_MOUSEBUTTONDOWN:
                 if (event.button.button == SDL_BUTTON_LEFT) {
-                    left_button_down = true;
+                    left_button_down = 1;
                 }
                 break;
             case SDL_MOUSEBUTTONUP:
                 if (event.button.button == SDL_BUTTON_LEFT) {
-                    left_button_down = false;
+                    left_button_down = 0;
                 }
                 break;
         }
@@ -81,27 +111,36 @@ void process_input() {
 
     if (left_button_down) {          
         SDL_GetMouseState(&current_mouse.x, &current_mouse.y);
+    
         
-        // Grid indices
+        // Mouse Grid indices
         int grid_x = current_mouse.x / grid_size;
         int grid_y = current_mouse.y / grid_size;
         
-        if (grid_x >= 0 && grid_x < WIDTH && grid_y >= 0 && grid_y < WIDTH) {
-            sim[grid_x][grid_y] = true;
+        
+        
+        if (grid_x >= 0 && grid_x <= WIDTH && grid_y >= 0 && grid_y <= WIDTH) {
+            for(int i=0;i<30;i++){
+                sim[grid_x][grid_y+i] = current_particle;
+                sim[grid_x+1][grid_y+i] = current_particle;
+            }
+            
         }
+
+        
     }
 }
 
 
 /// @brief Initializes SDL, window and renderer
-/// @return True if successful, otherwise False
+/// @return 1 if successful, otherwise 0
 int init_window(){
     if(SDL_Init(SDL_INIT_EVERYTHING)){
         printf("SDL failed to initialize, %s", SDL_GetError());
     }
 
     world.window = SDL_CreateWindow(
-        "Hi", 
+        "C Falling Sand", 
         SDL_WINDOWPOS_CENTERED, 
         SDL_WINDOWPOS_CENTERED, 
         RESOLUTION, RESOLUTION,
@@ -129,49 +168,29 @@ void update() {
     delta_time = (current_time - last_frame_time) / 1000.0f; // delta time in seconds
     last_frame_time = current_time;
 
-    // Sand Grid logic
+    // Auxiliary matrix, to update the sim frame by frame instead of everything at once.
+    // memory expensive but who cares
     for(int i = 0; i < WIDTH; i++){
         for(int j = 0; j < WIDTH; j++){
             aux_sim[i][j] = sim[i][j];
         }
     }
-    for(int i = 0; i < WIDTH; i++){
-        
-        for(int j = 0; j < WIDTH - 1; j++){
-        if(i==0){
-            if(sim[i][j] == true && sim[i][j+1] == false){
-                aux_sim[i][j] = false;
-                aux_sim[i][j+1] = true;
-            }
-            else if(sim[i][j] == true && sim[i+1][j+1] == false){
-                aux_sim[i][j] = false;
-                aux_sim[i+1][j+1] = true;
-            }
-        }
-        else if(i>WIDTH-2){
-            if(sim[i][j] == true && sim[i][j+1] == false){
-                aux_sim[i][j] = false;
-                aux_sim[i][j+1] = true;
-            }
-            else if(sim[i][j] == true && sim[i-1][j+1] == false){
-                aux_sim[i][j] = false;
-                aux_sim[i-1][j+1] = true;
-            }
-        }
-        else{
-            if(sim[i][j] == true && sim[i][j+1] == false){
-                aux_sim[i][j] = false;
-                aux_sim[i][j+1] = true;
-            }
-            else if(sim[i][j] == true && sim[i+1][j+1] == false){
-                aux_sim[i][j] = false;
-                aux_sim[i+1][j+1] = true;
-            }
-            else if(sim[i][j] == true && sim[i-1][j+1] == false){
-                aux_sim[i][j] = false;
-                aux_sim[i-1][j+1] = true;
-            }
 
+    // Main logic
+    for(int i = 0; i < WIDTH; i++){
+        for(int j = 0; j < WIDTH; j++){
+
+        // Type of sand checker
+        if(sim[i][j]==1){
+            regular_sand(sim, aux_sim, i, j);
+        }
+
+        else if(sim[i][j]==2){
+            inert_gas(sim, aux_sim, i, j);
+        }
+
+        else if(sim[i][j]==3){
+            basic_water(sim, aux_sim, i, j);
         }
             
         }
@@ -186,14 +205,19 @@ void update() {
 
 void render(){
     // Background
-    SDL_SetRenderDrawColor(world.renderer, 128, 55, 55, 255);
+    SDL_SetRenderDrawColor(world.renderer, 10, 10, 15, 255);
     SDL_RenderClear(world.renderer);
 
-    // Render Grid
-    SDL_SetRenderDrawColor(world.renderer, 255, 255, 255, 255);
+    // Render Gridx
     for(int i =0; i<WIDTH; i++){
     for(int j =0 ; j<WIDTH; j++){
-        if(sim[i][j]==true){
+        
+        if(sim[i][j]>=1){
+
+        Uint8 r = colors[(int)sim[i][j]][0];
+        Uint8 g = colors[(int)sim[i][j]][1];
+        Uint8 b = colors[(int)sim[i][j]][2];
+        SDL_SetRenderDrawColor(world.renderer, r, g, b, 255);
             SDL_Rect dot_rect = {
                 i * grid_size,
                 j * grid_size,
@@ -204,9 +228,6 @@ void render(){
         }
     }
     }
-
-    
-
     // Buffer swap
     SDL_RenderPresent(world.renderer);
 }
@@ -217,7 +238,6 @@ int main(){
 
     while(game_is_running){
         process_input();
-        
         update();
         render();
     }
